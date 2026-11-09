@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Veyra — Color Palette Extraction & Studio</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div id="app">
+        <header class="navbar">
+            <div class="logo">
+                <i class="fa-solid fa-palette"></i> Veyra
+            </div>
+            <span class="tagline">Intelligent Color Palette Studio</span>
+        </header>
+
+        <main class="container">
+            <div class="upload-section">
+                <!-- Dropzone UI -->
+                <div id="dropzone" class="dropzone">
+                    <input type="file" id="file-input" accept="image/png, image/jpeg, image/webp" hidden>
+                    <div class="dropzone-content" id="dropzone-prompt">
+                        <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
+                        <h3>Drag & Drop your image here</h3>
+                        <p>or <button type="button" id="browse-btn" class="btn-browse">Browse File</button></p>
+                        <p class="paste-hint"><kbd>Ctrl</kbd> + <kbd>V</kbd> to paste from clipboard</p>
+                        <span class="file-formats">Supports PNG, JPG, JPEG, WebP (Max 16MB)</span>
+
+                        <!-- Preset Sample Gallery Chips -->
+                        <div class="preset-samples-wrapper">
+                            <span class="preset-label">Or try a sample preset:</span>
+                            <div id="preset-samples-grid" class="preset-samples-grid"></div>
+                        </div>
+                    </div>
+
+                    <!-- Image Preview & Canvas Region Sampler Container -->
+                    <div id="preview-container" class="preview-container hidden">
+                        <div class="region-toolbar">
+                            <button type="button" id="toggle-region-btn" class="btn-tool">
+                                <i class="fa-solid fa-crop-simple"></i> Select Region
+                            </button>
+                            <button type="button" id="clear-region-btn" class="btn-tool hidden">
+                                <i class="fa-solid fa-rotate-left"></i> Reset Region
+                            </button>
+                            <span id="region-status" class="region-status">Target: Full Image</span>
+                        </div>
+
+                        <div class="canvas-wrapper">
+                            <img id="image-preview" src="" alt="Uploaded Preview">
+                            <canvas id="region-canvas" class="region-canvas hidden"></canvas>
+                            <button type="button" id="remove-img-btn" class="btn-remove" title="Remove Image">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+
+                        <!-- Extraction Parameters Controls -->
+                        <div class="controls-card">
+                            <div class="control-group">
+                                <label for="algorithm-select">Algorithm:</label>
+                                <select id="algorithm-select" class="select-input">
+                                    <option value="kmeans">K-Means Clustering</option>
+                                    <option value="median_cut">Median Cut</option>
+                                </select>
+                            </div>
+
+                            <div class="control-group">
+                                <label for="color-count-slider">Colors: <strong id="color-count-val">5</strong></label>
+                                <input type="range" id="color-count-slider" min="3" max="10" value="5" step="1">
+                            </div>
+
+                            <div class="control-group checkbox-group">
+                                <label class="checkbox-label" title="Filters out visually duplicate colors using CIELAB ΔE distance">
+                                    <input type="checkbox" id="perceptual-filter-checkbox" checked>
+                                    <span>CIELAB ΔE Filter</span>
+                                </label>
+                            </div>
+
+                            <button type="button" id="extract-btn" class="btn-extract">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i> Extract Palette
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Palette Output Display Area & Studio Features -->
+            <div id="palette-section" class="palette-section hidden">
+                <div class="section-header">
+                    <h2>Extracted Palette</h2>
+                    <div class="bulk-actions">
+                        <button type="button" id="add-swatch-btn" class="btn-action btn-add-swatch" title="Add Custom Swatch">
+                            <i class="fa-solid fa-plus"></i> Add Swatch
+                        </button>
+                        <button type="button" id="save-palette-btn" class="btn-action btn-favorite" title="Save to Favorites">
+                            <i class="fa-regular fa-star"></i> Save Favorite
+                        </button>
+                        <button type="button" id="regenerate-unlocked-btn" class="btn-action btn-regenerate hidden">
+                            <i class="fa-solid fa-arrows-rotate"></i> Regenerate Unlocked
+                        </button>
+                        <button type="button" id="download-png-btn" class="btn-action btn-export">
+                            <i class="fa-solid fa-file-image"></i> Export PNG Card
+                        </button>
+                        <button type="button" id="download-css-btn" class="btn-action">
+                            <i class="fa-solid fa-download"></i> Download .css
+                        </button>
+                        <button type="button" id="download-json-btn" class="btn-action">
+                            <i class="fa-solid fa-download"></i> Download .json
+                        </button>
+                        <button type="button" id="copy-hex-list-btn" class="btn-action">
+                            <i class="fa-regular fa-copy"></i> Copy HEX
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Studio Feature Tabs -->
+                <div class="studio-nav">
+                    <button type="button" class="studio-tab active" data-target="tab-grid">
+                        <i class="fa-solid fa-grip"></i> Swatches
+                    </button>
+                    <button type="button" class="studio-tab" data-target="tab-recolor">
+                        <i class="fa-solid fa-wand-magic"></i> Recolor & Swap
+                    </button>
+                    <button type="button" class="studio-tab" data-target="tab-ciede2000">
+                        <i class="fa-solid fa-code-compare"></i> CIEDE2000 Matcher
+                    </button>
+                    <button type="button" class="studio-tab" data-target="tab-spatial">
+                        <i class="fa-solid fa-chart-pie"></i> Spatial Coverage
+                    </button>
+                    <button type="button" class="studio-tab" data-target="tab-gradient">
+                        <i class="fa-solid fa-fill-drip"></i> Gradient Studio
+                    </button>
+                    <button type="button" class="studio-tab" data-target="tab-cvd">
+                        <i class="fa-solid fa-eye"></i> Color Blindness Simulation
+                    </button>
+                    <button type="button" class="studio-tab" data-target="tab-wcag">
+                        <i class="fa-solid fa-universal-access"></i> WCAG Contrast
+                    </button>
+                    <button type="button" class="studio-tab" data-target="tab-harmonies">
+                        <i class="fa-solid fa-circle-nodes"></i> Harmonies Studio
+                    </button>
+                    <button type="button" class="studio-tab" data-target="tab-mockup">
+                        <i class="fa-solid fa-desktop"></i> UI Mockup Preview
+                    </button>
+                    <button type="button" class="studio-tab" data-target="tab-analytics">
+                        <i class="fa-solid fa-sliders"></i> Mood & Character
+                    </button>
+                    <button type="button" class="studio-tab" data-target="tab-exporters">
+                        <i class="fa-solid fa-code"></i> Code & Tokens
+                    </button>
+                    <button type="button" class="studio-tab" data-target="tab-history">
+                        <i class="fa-solid fa-clock-rotate-left"></i> History & Saved
+                    </button>
+                </div>
+
+                <!-- Tab 1: Primary Swatch Grid -->
+                <div id="tab-grid" class="tab-pane active">
+                    <div id="palette-grid" class="palette-grid"></div>
+                </div>
+
+                <!-- Tab 2: Step 19 Real-Time Image Recolor & Palette Swap Simulator -->
+                <div id="tab-recolor" class="tab-pane hidden">
+                    <div class="studio-card">
+                        <h3>Real-Time Image Recolor & Palette Swap Simulator</h3>
+                        <p class="studio-subtitle">Remap image pixels from extracted palette colors to new target colors live in your browser canvas.</p>
+
+                        <div class="recolor-controls-bar">
+                            <div class="control-group">
+                                <label for="recolor-tolerance-slider">Tolerance: <strong id="recolor-tolerance-val">30</strong></label>
+                                <input type="range" id="recolor-tolerance-slider" min="5" max="100" value="30" step="1">
+                            </div>
+
+                            <div class="control-group checkbox-group">
+                                <label class="checkbox-label" title="Preserve original pixel lightness during color transfer">
+                                    <input type="checkbox" id="recolor-preserve-luminance" checked>
+                                    <span>Preserve Luminance</span>
+                                </label>
+                            </div>
+
+                            <button type="button" id="apply-recolor-btn" class="btn-action btn-export">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i> Process Recolor
+                            </button>
+                            <button type="button" id="reset-recolor-btn" class="btn-action">
+                                <i class="fa-solid fa-rotate-left"></i> Reset Mappings
+                            </button>
+                            <button type="button" id="download-recolored-btn" class="btn-action btn-add-swatch">
+                                <i class="fa-solid fa-download"></i> Download Image
+                            </button>
+                        </div>
+
+                        <div class="recolor-mapping-grid" id="recolor-mapping-grid"></div>
+
+                        <div class="recolor-canvas-wrapper">
+                            <canvas id="recolor-result-canvas" class="recolor-result-canvas"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 3: Step 18 CIEDE2000 Perceptual Matcher & Delta E Engine -->
+                <div id="tab-ciede2000" class="tab-pane hidden">
+                    <div class="studio-card">
+                        <h3>CIEDE2000 Perceptual Color Matching & Delta E Engine</h3>
+                        <p class="studio-subtitle">Evaluate exact CIEDE2000 (ΔE₀₀) perceptual distance between palette swatches and reference brand libraries or custom targets.</p>
+
+                        <div class="ciede-controls-bar">
+                            <div class="control-group">
+                                <label for="ciede-library-select">Reference Library:</label>
+                                <select id="ciede-library-select" class="select-input">
+                                    <option value="tailwind">Tailwind CSS Core Palette</option>
+                                    <option value="material">Google Material Design 500</option>
+                                    <option value="ios">Apple iOS System Colors</option>
+                                </select>
+                            </div>
+
+                            <div class="control-group">
+                                <label for="ciede-custom-target-input">Custom Target HEX:</label>
+                                <input type="text" id="ciede-custom-target-input" class="select-input" placeholder="#3b82f6, #ef4444" style="width: 180px;">
+                                <button type="button" id="ciede-run-custom-btn" class="btn-tool">
+                                    <i class="fa-solid fa-magnifying-glass"></i> Match Custom
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="ciede-dashboard">
+                            <!-- Closest Library Matches Grid -->
+                            <div class="ciede-section">
+                                <h4><i class="fa-solid fa-bullseye"></i> Nearest Library Match Breakdown</h4>
+                                <div id="ciede-matches-grid" class="ciede-matches-grid"></div>
+                            </div>
+
+                            <!-- Intra-Palette Pairwise Delta E Matrix -->
+                            <div class="ciede-section" style="margin-top: 1.5rem;">
+                                <div class="ciede-matrix-header">
+                                    <h4><i class="fa-solid fa-table-cells"></i> Intra-Palette CIEDE2000 Distance Matrix</h4>
+                                    <span class="ciede-avg-chip">Avg Distinctness: <strong id="ciede-avg-dist-val">0.0 ΔE₀₀</strong></span>
+                                </div>
+                                <p class="studio-subtitle" style="margin-bottom: 0.75rem;">Pairwise ΔE₀₀ values between swatches inside this palette. Values > 12.0 indicate strong perceptual distinction.</p>
+                                <div class="table-responsive">
+                                    <table id="ciede-matrix-table" class="ciede-matrix-table"></table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 4: Step 16 Image Spatial Color Distribution & Coverage Dashboard -->
+                <div id="tab-spatial" class="tab-pane hidden">
+                    <div class="studio-card">
+                        <h3>Image Spatial Color Coverage & Pixel Distribution</h3>
+                        <p class="studio-subtitle">Exact area percentage breakdown and perceptual pixel density map for each extracted palette swatch.</p>
+
+                        <div class="spatial-dashboard">
+                            <!-- Coverage Summary Strip -->
+                            <div class="coverage-summary-bar" id="spatial-summary-bar"></div>
+
+                            <!-- Interactive Pixel Distribution Grid -->
+                            <div id="spatial-cards-grid" class="spatial-cards-grid"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 5: Step 17 CSS Multi-Stop Gradient Generator Studio -->
+                <div id="tab-gradient" class="tab-pane hidden">
+                    <div class="studio-card">
+                        <h3>CSS Multi-Stop Gradient Studio</h3>
+                        <p class="studio-subtitle">Generate fluid CSS background gradients dynamically interpolated across extracted palette swatches.</p>
+
+                        <div class="gradient-controls-bar">
+                            <div class="control-group">
+                                <label for="gradient-type-select">Style:</label>
+                                <select id="gradient-type-select" class="select-input">
+                                    <option value="linear">Linear</option>
+                                    <option value="radial">Radial</option>
+                                    <option value="conic">Conic</option>
+                                </select>
+                            </div>
+
+                            <div class="control-group" id="gradient-angle-group">
+                                <label for="gradient-angle-slider">Angle: <strong id="gradient-angle-val">90°</strong></label>
+                                <input type="range" id="gradient-angle-slider" min="0" max="360" value="90" step="5">
+                            </div>
+
+                            <button type="button" id="copy-gradient-css-btn" class="btn-action btn-export">
+                                <i class="fa-regular fa-copy"></i> Copy CSS Gradient
+                            </button>
+                        </div>
+
+                        <div id="gradient-preview-box" class="gradient-preview-box"></div>
+                    </div>
+                </div>
+
+                <!-- Tab 6: Color Vision Deficiency Simulator -->
+                <div id="tab-cvd" class="tab-pane hidden">
+                    <div class="studio-card">
+                        <div class="cvd-controls">
+                            <label for="cvd-select">Vision Mode:</label>
+                            <select id="cvd-select" class="select-input">
+                                <option value="normal">Normal Vision</option>
+                                <option value="protanopia">Protanopia (Red-Blind)</option>
+                                <option value="deuteranopia">Deuteranopia (Green-Blind)</option>
+                                <option value="tritanopia">Tritanopia (Blue-Blind)</option>
+                                <option value="achromatopsia">Achromatopsia (Monochrome)</option>
+                            </select>
+                        </div>
+                        <div id="cvd-preview-grid" class="cvd-grid"></div>
+                    </div>
+                </div>
+
+                <!-- Tab 7: WCAG 2.1 Accessibility Matrix -->
+                <div id="tab-wcag" class="tab-pane hidden">
+                    <div class="studio-card">
+                        <h3>WCAG 2.1 Text Legibility Matrix</h3>
+                        <p class="studio-subtitle">Evaluates contrast ratios against standard white (#FFFFFF) and dark (#000000) text backgrounds.</p>
+                        <div id="wcag-matrix-grid" class="wcag-grid"></div>
+                    </div>
+                </div>
+
+                <!-- Tab 8: Color Harmonies Studio -->
+                <div id="tab-harmonies" class="tab-pane hidden">
+                    <div class="studio-card">
+                        <div class="harmony-picker-header">
+                            <label for="harmony-swatch-select">Select Base Swatch:</label>
+                            <select id="harmony-swatch-select" class="select-input"></select>
+                        </div>
+                        <div id="harmonies-container" class="harmonies-grid"></div>
+                    </div>
+                </div>
+
+                <!-- Tab 9: Live UI Component Mockup -->
+                <div id="tab-mockup" class="tab-pane hidden">
+                    <div class="studio-card">
+                        <h3>Interactive UI Component Sandbox</h3>
+                        <p class="studio-subtitle">Visualize your extracted color palette applied directly to web interface elements in real time.</p>
+
+                        <!-- Role Mapper Controls -->
+                        <div class="mockup-controls">
+                            <div class="role-picker">
+                                <label for="role-primary">Primary / CTA:</label>
+                                <select id="role-primary" class="select-input role-select"></select>
+                            </div>
+                            <div class="role-picker">
+                                <label for="role-surface">Surface / Card:</label>
+                                <select id="role-surface" class="select-input role-select"></select>
+                            </div>
+                            <div class="role-picker">
+                                <label for="role-accent">Accent / Highlight:</label>
+                                <select id="role-accent" class="select-input role-select"></select>
+                            </div>
+                            <div class="role-picker">
+                                <label for="role-bg">Background:</label>
+                                <select id="role-bg" class="select-input role-select"></select>
+                            </div>
+                            <div class="role-picker">
+                                <label for="role-text">Primary Text:</label>
+                                <select id="role-text" class="select-input role-select"></select>
+                            </div>
+                        </div>
+
+                        <!-- Mockup Frame -->
+                        <div id="ui-mockup-frame" class="mockup-frame">
+                            <div class="mockup-header">
+                                <div class="mockup-brand">
+                                    <i class="fa-solid fa-cube"></i> NovaUI Studio
+                                </div>
+                                <div class="mockup-nav-links">
+                                    <span>Features</span>
+                                    <span>Solutions</span>
+                                    <span>Pricing</span>
+                                </div>
+                            </div>
+
+                            <div class="mockup-hero">
+                                <span class="mockup-badge"><i class="fa-solid fa-sparkles"></i> New Release v2.0</span>
+                                <h2>Design Products Visually with Veyra</h2>
+                                <p>Generate cohesive theme systems, verify WCAG contrast standards, and test accessibility live in real-time UI components.</p>
+                                <div class="mockup-actions">
+                                    <button type="button" class="mockup-btn mockup-btn-primary">Get Started Free</button>
+                                    <button type="button" class="mockup-btn mockup-btn-outline">Documentation</button>
+                                </div>
+                            </div>
+
+                            <div class="mockup-cards-grid">
+                                <div class="mockup-card">
+                                    <i class="fa-solid fa-bolt mockup-icon"></i>
+                                    <h4>Lightning Extraction</h4>
+                                    <p>Fast K-Means algorithm runs in under 50ms per image.</p>
+                                </div>
+                                <div class="mockup-card">
+                                    <i class="fa-solid fa-shield-halved mockup-icon"></i>
+                                    <h4>WCAG Compliant</h4>
+                                    <p>Automatic AA and AAA text legibility verification.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 10: Palette Character & Dominant Hue Analytics Dashboard -->
+                <div id="tab-analytics" class="tab-pane hidden">
+                    <div class="studio-card">
+                        <h3>Palette Character & Dominant Hue Analytics</h3>
+                        <p class="studio-subtitle">Automated classification of palette mood, tonal metrics, and dominant hue spectrum breakdown.</p>
+
+                        <div class="analytics-dashboard">
+                            <!-- Profile Hero Card -->
+                            <div class="analytics-profile-card">
+                                <div class="profile-header">
+                                    <span class="profile-badge-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
+                                    <div>
+                                        <span class="analytics-label">Palette Profile</span>
+                                        <h3 id="analytics-profile-title">Analyzing...</h3>
+                                    </div>
+                                </div>
+                                <p id="analytics-profile-desc" class="profile-desc">Extract a palette to view its character analysis.</p>
+
+                                <div class="analytics-metrics-row">
+                                    <div class="metric-chip">
+                                        <span class="metric-val" id="metric-dom-hue">--</span>
+                                        <span class="metric-lbl">Dominant Hue</span>
+                                    </div>
+                                    <div class="metric-chip">
+                                        <span class="metric-val" id="metric-avg-sat">0%</span>
+                                        <span class="metric-lbl">Avg Saturation</span>
+                                    </div>
+                                    <div class="metric-chip">
+                                        <span class="metric-val" id="metric-avg-light">0%</span>
+                                        <span class="metric-lbl">Avg Lightness</span>
+                                    </div>
+                                    <div class="metric-chip">
+                                        <span class="metric-val" id="metric-light-range">0%</span>
+                                        <span class="metric-lbl">Tonal Range</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Hue Spectrum Breakdown -->
+                            <div class="hue-breakdown-card">
+                                <h4><i class="fa-solid fa-palette"></i> Hue Spectrum Breakdown</h4>
+                                <div id="hue-distribution-bars" class="hue-bars-container"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 11: Step 23 Expanded Digital Palette Exporters & Design Tokens Studio -->
+                <div id="tab-exporters" class="tab-pane hidden">
+                    <div class="studio-card">
+                        <h3>Design Tokens & Code Exporters</h3>
+                        <p class="studio-subtitle">Export palette tokens formatted for popular UI frameworks, design systems, and digital art tools.</p>
+
+                        <div class="export-options-grid">
+                            <div class="export-option-card">
+                                <i class="fa-solid fa-layer-group export-icon"></i>
+                                <h4>Adobe Swatch Exchange</h4>
+                                <p>Binary .ASE file compatible with Photoshop, Illustrator, & InDesign.</p>
+                                <button type="button" id="export-ase-btn" class="btn-action btn-export">
+                                    <i class="fa-solid fa-download"></i> Download .ASE Swatch
+                                </button>
+                            </div>
+
+                            <div class="export-option-card">
+                                <i class="fa-solid fa-palette export-icon"></i>
+                                <h4>Adobe Color Swatch (.ACO)</h4>
+                                <p>Legacy Photoshop palette binary format compatible with digital painting tools.</p>
+                                <button type="button" id="export-aco-btn" class="btn-action btn-export">
+                                    <i class="fa-solid fa-download"></i> Download .ACO Swatch
+                                </button>
+                            </div>
+
+                            <div class="export-option-card">
+                                <i class="fa-solid fa-paintbrush export-icon"></i>
+                                <h4>Procreate Swatches</h4>
+                                <p>Native .swatches palette archive for Procreate on iPad & Procreate Pocket.</p>
+                                <button type="button" id="export-swatches-btn" class="btn-action btn-export">
+                                    <i class="fa-solid fa-download"></i> Download .swatches
+                                </button>
+                            </div>
+
+                            <div class="export-option-card">
+                                <i class="fa-solid fa-pen-ruler export-icon"></i>
+                                <h4>GIMP & Inkscape (.GPL)</h4>
+                                <p>Open standard palette format for GIMP, Inkscape, & Krita.</p>
+                                <button type="button" id="export-gpl-btn" class="btn-action btn-export">
+                                    <i class="fa-solid fa-download"></i> Download .GPL Palette
+                                </button>
+                            </div>
+
+                            <div class="export-option-card">
+                                <i class="fa-solid fa-file-code export-icon"></i>
+                                <h4>Vector SVG Graphic</h4>
+                                <p>Scalable vector card rendering for documentation & presentation.</p>
+                                <button type="button" id="export-svg-btn" class="btn-action btn-export">
+                                    <i class="fa-solid fa-download"></i> Download .SVG Vector
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="code-exporter-section">
+                            <div class="code-tab-header">
+                                <button type="button" class="code-tab active" data-code="tailwind">Tailwind Config</button>
+                                <button type="button" class="code-tab" data-code="scss">SCSS Variables</button>
+                                <button type="button" class="code-tab" data-code="figma">Figma Tokens JSON</button>
+                                <button type="button" class="code-tab" data-code="tokens">Style Dictionary JSON</button>
+                                <button type="button" id="copy-code-btn" class="btn-action copy-code-btn">
+                                    <i class="fa-regular fa-copy"></i> Copy Code
+                                </button>
+                            </div>
+                            <div class="code-container">
+                                <pre><code id="code-output-block">// Code snippet will be rendered here</code></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 12: Palette History & Favorites Manager -->
+                <div id="tab-history" class="tab-pane hidden">
+                    <div class="studio-card">
+                        <div class="history-header">
+                            <div>
+                                <h3>Palette History & Saved Favorites</h3>
+                                <p class="studio-subtitle">View, reload, or favorite your previously extracted palettes stored locally in your browser.</p>
+                            </div>
+                            <div class="history-controls">
+                                <select id="history-filter-select" class="select-input">
+                                    <option value="all">Show All</option>
+                                    <option value="favorites">Favorites Only</option>
+                                </select>
+                                <button type="button" id="clear-history-btn" class="btn-action">
+                                    <i class="fa-solid fa-trash-can"></i> Clear History
+                                </button>
+                            </div>
+                        </div>
+                        <div id="history-grid" class="history-grid"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast Notification Banner -->
+    <div id="toast" class="toast hidden">
+        <i class="fa-solid fa-circle-check"></i> <span id="toast-message">Copied to clipboard!</span>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
